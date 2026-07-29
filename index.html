@@ -1719,6 +1719,21 @@ function charApplies(nom, char) {
   return false;
 }
 
+// Некоторые позиции в спецификации показаны во вторичной единице измерения,
+// а закупочная цена в 1С всегда привязана к ОСНОВНОЙ (базовой) единице
+// номенклатуры — типичный случай для металлопроката: рецепт указан в «кг»,
+// а закупается и оценивается материал «за тонну». 1С сама подсказывает
+// коэффициент прямо в названии единицы: «кг (0,001 т)» значит 1 кг = 0,001 т,
+// то есть цена в закупках — рублей за тонну. Без пересчёта количество в «кг»
+// умножалось на цену «за тонну» напрямую — себестоимость завышалась в 1000 раз.
+function unitToPriceCoef(unit) {
+  if (!unit) return 1;
+  const m = String(unit).match(/\(\s*([\d]+(?:[.,]\d+)?)\s*[^)]*\)\s*$/);
+  if (!m) return 1;
+  const coef = parseFloat(m[1].replace(',', '.'));
+  return (coef > 0 && isFinite(coef)) ? coef : 1;
+}
+
 function calcCost(nom, char, visited, depth) {
   if (depth > 8) return { cost: 0, full: false, missing: [nom + '(глубина)'], tree: [] };
   const fs = findSpecEx(nom, char);
@@ -1750,7 +1765,11 @@ function calcCost(nom, char, visited, depth) {
     // характеристика даёт точное попадание в цену или в спецификацию.
     const cch = comp.char || (charApplies(comp.name, char) ? char : '');
     const sub = calcCost(comp.name, cch, nv, depth + 1);
-    const lineC = sub.cost * comp.qty;
+    // Количество компонента переводим в единицу, за которую фактически
+    // указана цена (см. unitToPriceCoef) — иначе результат искажается
+    // на порядки, когда рецепт в «кг», а цена в 1С за «т».
+    const qtyForCost = comp.qty * unitToPriceCoef(comp.unit);
+    const lineC = sub.cost * qtyForCost;
     total += lineC;
     if (!sub.full) full = false;
     missing.push(...sub.missing);
@@ -5287,7 +5306,7 @@ async function syBoot() {
 }
 setTimeout(() => { try { syBoot(); } catch (e) { console.warn('syBoot:', e); } }, 500);
 
-console.log('%c\u2713 IRIX COST v5.7 (fix-2026-07-29: \u0440\u0430\u0437\u0431\u043e\u0440 \u0441\u043f\u0435\u0446\u0438\u0444\u0438\u043a\u0430\u0446\u0438\u0439 \u0441 \u0441\u043e\u0432\u043c\u0435\u0449\u0451\u043d\u043d\u043e\u0439 \u043a\u043e\u043b\u043e\u043d\u043a\u043e\u0439 \u043d\u043e\u043c\u0435\u043d\u043a\u043b\u0430\u0442\u0443\u0440\u044b, \u043a\u0430\u043a \u0432 \u0432\u044b\u0433\u0440\u0443\u0437\u043a\u0435 \u041a\u041a\u0417\u041c) \u2014 \u0444\u0430\u0439\u043b \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d \u043f\u043e\u043b\u043d\u043e\u0441\u0442\u044c\u044e', 'color:#00E38A;font-weight:bold;font-size:14px');
+console.log('%c\u2713 IRIX COST v5.8 (fix-2026-07-29: \u043f\u0435\u0440\u0435\u0432\u043e\u0434 \u043a\u0433\u2192\u0442 \u043f\u0440\u0438 \u0440\u0430\u0441\u0447\u0451\u0442\u0435 \u0441\u0435\u0431\u0435\u0441\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u0438 + \u0440\u0430\u0437\u0431\u043e\u0440 \u0441\u043f\u0435\u0446\u0438\u0444\u0438\u043a\u0430\u0446\u0438\u0439 \u041a\u041a\u0417\u041c) \u2014 \u0444\u0430\u0439\u043b \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d \u043f\u043e\u043b\u043d\u043e\u0441\u0442\u044c\u044e', 'color:#00E38A;font-weight:bold;font-size:14px');
 window.__CALC_OK__ = true;
 </script>
 </body>
